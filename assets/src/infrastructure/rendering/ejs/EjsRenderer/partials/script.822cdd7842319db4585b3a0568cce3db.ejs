@@ -1,0 +1,212 @@
+<script>
+  function notifyReactNative(messageType, content) {
+    const message = {
+      type: messageType,
+      content,
+    };
+    window.ReactNativeWebView.postMessage(JSON.stringify(message));
+  }
+  const notifyLayout = notifyReactNative.bind(null, 'layout');
+  const notifySwitchChanged = notifyReactNative.bind(null, 'switchchanged');
+  const notifyError = notifyReactNative.bind(null, 'error');
+  const notifyNextPressed = notifyReactNative.bind(null, 'nextpressed');
+  const notifyLinkPressed = notifyReactNative.bind(null, 'linkpressed');
+  const notifyArticleLinkPressed = notifyReactNative.bind(null, 'articlelinkpressed');
+  const notifyLog = function(msg) {
+    notifyReactNative('log', {
+      message: msg
+    })
+  }
+
+  ; // Report window height
+  (function() {
+    const notify = () => notifyLayout({
+      width: document.body.offsetWidth,
+      height: document.body.offsetHeight,
+    });
+
+    // Watch for opening of outcome dropdowns
+    const bodyEl = document.querySelector('body')
+    const observerCb = (mutationList) => {
+      mutationList.forEach(mut => {
+        if (mut.type !== 'attributes') return;
+        if (mut.attributeName === 'open') notify();
+      })
+    }
+    const observer = new MutationObserver(observerCb)
+    observer.observe(bodyEl, {
+      attributes: true,
+      childList: true,
+      subtree: true
+    })
+
+    // In case of window resizing
+    window.addEventListener('resize', notify)
+
+    // Wait for any images to finish loading
+    window.addEventListener('load', notify)
+    notify()
+  })();
+
+  ; // Listen to changes in switch values
+  (function() {
+    const inputs = Array.from(document.querySelectorAll('.template.switches__input'));
+    for (const input of inputs) {
+      input.addEventListener('change', ({
+        target
+      }) => {
+        const id = target.dataset.switchId;
+        const levelId = target.dataset.levelId;
+
+        notifySwitchChanged({
+          id,
+          levelId,
+        });
+      });
+    }
+  })();
+
+  ; // Listen to click of next algorithm button
+  (function() {
+    const buttons = Array.from(document.querySelectorAll('.template.outcomes__button'));
+    for (const button of buttons) {
+      button.addEventListener('click', ({
+        target
+      }) => {
+        const id = target.getAttribute('data-next-id');
+        notifyNextPressed({
+          id
+        });
+      });
+    }
+  })();
+
+  ; // Wrap tables with wrapper div
+  (function() {
+    const tables = Array.from(document.getElementsByTagName('table'))
+    tables.forEach(table => {
+      const wrapper = document.createElement('div')
+      wrapper.className = 'table__wrapper'
+      const newTable = table.cloneNode(true)
+      wrapper.appendChild(newTable)
+      table.replaceWith(wrapper)
+    })
+  })()
+
+  ; // Listen to click of any link
+  (function() {
+    const isArticleLink = (href) => href.slice(0, 8) === 'article:'
+
+    function handleLinkPressed(href) {
+      notifyLinkPressed({
+        href
+      });
+    }
+
+    function handleArticleLinkPressed(href) {
+      const articleId = href.slice(8)
+      notifyArticleLinkPressed({
+        articleId
+      });
+    }
+
+    const links = Array.from(document.querySelectorAll('a[href]'))
+    for (const a of links) {
+      const href = a.getAttribute('href')
+      if (href.slice(0, 1) === '#') continue
+      a.addEventListener('click', function(e) {
+        e.preventDefault()
+        const href = this.getAttribute('href')
+        if (isArticleLink(href)) handleArticleLinkPressed(href)
+        else handleLinkPressed(href)
+      })
+    }
+  })();
+
+  ; // Report errors
+  (function() {
+    window.addEventListener('error', (e) =>
+      notifyError({
+        name: e.error.name,
+        message: e.message,
+      })
+    );
+  })();
+
+  ; // Clear tooltip on click out
+  (function() {
+    const ignoreList = document.querySelectorAll('.template.switches__tooltip, .template.switches__group-label, .template.switches__tooltip-select')
+    const selects = document.querySelectorAll('.template.switches__tooltip-select')
+
+    document.body.addEventListener('click', (e) => {
+      for (const el of selects) {
+        el.checked = false
+      }
+    })
+    Array.from(ignoreList).forEach(el => {
+      el.addEventListener('click', (e) => e.stopPropagation())
+    })
+  })()
+
+  ; // hide iframes in case of no internet connectivity
+  (function() {
+    function wrapElement(el, className) {
+      const wrapper = document.createElement('div')
+      wrapper.className = className
+      const newEl = el.cloneNode()
+      wrapper.appendChild(newEl)
+      el.replaceWith(wrapper)
+      return wrapper
+    }
+    const frames = document.getElementsByTagName('iframe')
+    const wrappedFrames = []
+    for (const i = 0; i < frames.length; i++) {
+      const wrappedFrame = wrapElement(frames[i], 'iframe__wrapper iframe__wrapper--loading')
+      frames[i].addEventListener('load', function() {
+        wrappedFrame.classList.remove('iframe__wrapper--loading')
+      })
+      wrappedFrames.push(wrappedFrame)
+    }
+
+    function OnlineState(context) {
+      return {
+        toOnline: function() {},
+        toOffline: function() {
+          for (const i = 0; i < wrappedFrames.length; i++) {
+            const wrappedFrame = wrappedFrames[i]
+            wrappedFrame.classList.add('iframe__wrapper--offline')
+          }
+          context.state = OfflineState(context)
+        }
+      }
+    }
+
+    function OfflineState(context) {
+      return {
+        toOnline: function() {
+          for (const i = 0; i < wrappedFrames.length; i++) {
+            const wrappedFrame = wrappedFrames[i]
+            wrappedFrame.classList.remove('iframe__wrapper--offline')
+          }
+          context.state = OnlineState(context)
+        },
+        toOffline: function() {}
+      }
+    }
+
+    function ConnectivityStateManager() {
+      const context = {}
+      context.state = window.navigator.onLine ? OnlineState(context) : OfflineState(context)
+
+      window.addEventListener('online', function() {
+        context.state.toOnline()
+      })
+      window.addEventListener('offline', function() {
+        context.state.toOffline()
+      })
+      return context
+    }
+
+    const stateManager = ConnectivityStateManager()
+  })()
+</script>

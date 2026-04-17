@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%- data.title %></title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background-color: #fafafa;
+    }
+
+    iframe,
+    img {
+      width: 100%;
+    }
+
+    blockquote {
+      position: relative;
+      margin: 0;
+      padding: 16px 32px;
+    }
+
+    blockquote::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background-color: #3c7590;
+    }
+
+    table {
+      border-collapse: collapse;
+      border-spacing: 0px;
+      border-radius: 4px;
+    }
+
+    table,
+    th,
+    td {
+      border: 1px solid #c9cfc9;
+    }
+
+    thead {
+      background-color: #dbe9f0;
+    }
+
+    tr {
+      height: 56px;
+    }
+
+    thead th {
+      color: #0f1d24;
+    }
+
+    td,
+    th {
+      padding-left: 16px;
+      padding-right: 16px;
+      text-align: center;
+    }
+
+    details summary::-webkit-details-marker,
+    ::marker {
+      display: none;
+    }
+
+    /* Responsive Page Width */
+
+    @media screen and (min-width: 900px) {
+      body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .template.header,
+      .template.main,
+      .template.citations {
+        width: 868px;
+      }
+    }
+
+    /* Wrappers */
+
+    .table__wrapper {
+      width: 100%;
+      overflow-x: scroll;
+    }
+
+    .iframe__wrapper {
+      min-width: 100%;
+      min-height: 300px;
+    }
+
+    .iframe__wrapper--offline,
+    .iframe__wrapper--loading {
+      border: 1px dashed black;
+      position: relative;
+    }
+
+    .iframe__wrapper::before {
+      text-align: center;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      /* body-large */
+      line-height: 24px;
+      font-size: 16px;
+      letter-spacing: 0.5px;
+      font-weight: 400;
+    }
+
+    .iframe__wrapper--offline::before {
+      content: 'Oops! We could not load this embedded element since there is no internet connection.';
+    }
+
+    .iframe__wrapper--loading::before {
+      content: 'Loading embedded element...';
+    }
+
+    .iframe__wrapper--offline iframe,
+    .iframe__wrapper--loading iframe {
+      visibility: hidden;
+    }
+
+    /* Template */
+
+    .template.last-updated {
+      display: block;
+      align-self: flex-end;
+      margin-right: 16px;
+      text-align: right;
+    }
+
+    .template.citations {
+      padding-top: 16px;
+    }
+
+    .template.citations__title {
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+      color: #0f1d24;
+      /* label-large */
+      line-height: 20px;
+      font-size: 14px;
+      letter-spacing: 0.1px;
+      font-weight: 700;
+    }
+
+    .template.citations .template.citations__title::before {
+      content: "Show "
+    }
+
+    .template.citations[open] .template.citations__title::before {
+      content: "Hide "
+    }
+
+    .template.citations__list {
+      margin: 0;
+      padding: 0;
+      padding-left: 16px;
+      list-style: none;
+      counter-reset: citations__list;
+    }
+
+    .template.citations__item::before {
+      content: counter(citations__list) ". ";
+      counter-increment: citations__list;
+    }
+
+    .template.citations__item {
+      margin-top: 16px;
+      /* body-large */
+      line-height: 24px;
+      font-size: 16px;
+      letter-spacing: 0.5;
+      font-weight: 400;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="template main"><%- data.body %></main>
+  <% if (data.citations.length > 0) { %>
+  <details class="template citations">
+    <summary class="template citations__title">Citations</summary>
+    <ol class="template citations__list">
+      <% for(const c of data.citations)  { %>
+      <li class="template citations__item"><%- c.getValue() %></li>
+      <% } %>
+    </ol>
+  </details>
+  <% } %>
+  <i class="template last-updated">Last Updated: <%- data.lastUpdated.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) _%></i>
+</body>
+
+<script>
+  function notifyReactNative(messageType, content) {
+    const message = {
+      type: messageType,
+      content,
+    };
+    window.ReactNativeWebView.postMessage(JSON.stringify(message));
+  }
+  const notifyArticleLinkPressed = notifyReactNative.bind(null, 'articlelinkpressed');
+  const notifyLinkPressed = notifyReactNative.bind(null, 'linkpressed');
+  const notifyError = notifyReactNative.bind(null, 'error');
+
+  ; // Listen to click of any link
+  (function() {
+    const isArticleLink = (href) => href.slice(0, 8) === 'article:'
+
+    function handleLinkPressed(href) {
+      notifyLinkPressed({
+        href
+      });
+    }
+
+    function handleArticleLinkPressed(href) {
+      const articleId = href.slice(8)
+      notifyArticleLinkPressed({
+        articleId
+      });
+    }
+
+    const links = Array.from(document.querySelectorAll('a[href]'))
+    for (const a of links) {
+      const href = a.getAttribute('href')
+      if (href.slice(0, 1) === '#') continue
+      a.addEventListener('click', function(e) {
+        e.preventDefault()
+        const href = this.getAttribute('href')
+        if (isArticleLink(href)) handleArticleLinkPressed(href)
+        else handleLinkPressed(href)
+      })
+    }
+  })();
+
+  ; // hide iframes in case of no internet connectivity
+  (function() {
+    function wrapElement(el, className) {
+      const wrapper = document.createElement('div')
+      wrapper.className = className
+      const newEl = el.cloneNode()
+      wrapper.appendChild(newEl)
+      el.replaceWith(wrapper)
+      return wrapper
+    }
+    const frames = document.getElementsByTagName('iframe')
+    const wrappedFrames = []
+    for (const i = 0; i < frames.length; i++) {
+      const wrappedFrame = wrapElement(frames[i], 'iframe__wrapper iframe__wrapper--loading')
+      frames[i].addEventListener('load', function() {
+        wrappedFrame.classList.remove('iframe__wrapper--loading')
+      })
+      wrappedFrames.push(wrappedFrame)
+    }
+
+    function OnlineState(context) {
+      return {
+        toOnline: function() {},
+        toOffline: function() {
+          for (const i = 0; i < wrappedFrames.length; i++) {
+            const wrappedFrame = wrappedFrames[i]
+            wrappedFrame.classList.add('iframe__wrapper--offline')
+          }
+          context.state = OfflineState(context)
+        }
+      }
+    }
+
+    function OfflineState(context) {
+      return {
+        toOnline: function() {
+          for (const i = 0; i < wrappedFrames.length; i++) {
+            const wrappedFrame = wrappedFrames[i]
+            wrappedFrame.classList.remove('iframe__wrapper--offline')
+          }
+          context.state = OnlineState(context)
+        },
+        toOffline: function() {}
+      }
+    }
+
+    function ConnectivityStateManager() {
+      const context = {}
+      context.state = window.navigator.onLine ? OnlineState(context) : OfflineState(context)
+
+      window.addEventListener('online', function() {
+        context.state.toOnline()
+      })
+      window.addEventListener('offline', function() {
+        context.state.toOffline()
+      })
+      return context
+    }
+
+    const stateManager = ConnectivityStateManager()
+  })()
+
+  ; // Report errors
+  (function() {
+    window.addEventListener('error', (e) =>
+      notifyError({
+        name: e.name,
+        message: e.message,
+      })
+    );
+  })();
+
+  ; // Wrap tables with wrapper div
+  (function() {
+    const tables = Array.from(document.getElementsByTagName('table'))
+    tables.forEach(table => {
+      const wrapper = document.createElement('div')
+      wrapper.className = 'table__wrapper'
+      const newTable = table.cloneNode(true)
+      wrapper.appendChild(newTable)
+      table.replaceWith(wrapper)
+    })
+  })()
+</script>
+
+</html>

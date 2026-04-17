@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%- data.title %></title>
+  <style>
+    body {
+      background-color: #fafafa;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    h1 {
+      margin-bottom: 16px;
+    }
+
+    p {
+      text-align: left;
+    }
+
+    iframe,
+    img {
+      width: 100%;
+    }
+
+    .iframe__wrapper {
+      min-width: 100%;
+      min-height: 300px;
+    }
+
+    .iframe__wrapper--offline,
+    .iframe__wrapper--loading {
+      border: 1px dashed black;
+      position: relative;
+    }
+
+    .iframe__wrapper::before {
+      text-align: center;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      /* body-large */
+      line-height: 24px;
+      font-size: 16px;
+      letter-spacing: 0.5px;
+      font-weight: 400;
+    }
+
+    .iframe__wrapper--offline::before {
+      content: 'Oops! We could not load this embedded element since there is no internet connection.';
+    }
+
+    .iframe__wrapper--loading::before {
+      content: 'Loading embedded element...';
+    }
+
+    .iframe__wrapper--offline iframe,
+    .iframe__wrapper--loading iframe {
+      visibility: hidden;
+    }
+  </style>
+</head>
+
+<body>
+  <%- data.body %>
+
+  <script>
+    function notifyReactNative(messageType, content) {
+      const message = {
+        type: messageType,
+        content,
+      };
+      window.ReactNativeWebView.postMessage(JSON.stringify(message));
+    }
+    const notifyLinkPressed = notifyReactNative.bind(null, 'linkpressed')
+    const notifyError = notifyReactNative.bind(null, 'error');
+    const notifyLayout = notifyReactNative.bind(null, 'layout');
+
+    ; // Send window size upon load of the window
+    (function() {
+      function notify() {
+        notifyLayout({
+          width: document.body.offsetWidth,
+          height: document.body.offsetHeight,
+        })
+      }
+      window.addEventListener('load', notify);
+      window.addEventListener('resize', notify);
+    })();
+
+    ; // Listen to click of any link
+    (function() {
+      const links = Array.from(document.querySelectorAll('a[href]'))
+      for (const a of links) {
+        a.addEventListener('click', function(e) {
+          e.preventDefault()
+          const href = this.getAttribute('href')
+          notifyLinkPressed({
+            href
+          })
+        })
+      }
+    })();
+
+    ; // hide iframes in case of no internet connectivity
+    (function() {
+      function wrapElement(el, className) {
+        const wrapper = document.createElement('div')
+        wrapper.className = className
+        const newEl = el.cloneNode()
+        wrapper.appendChild(newEl)
+        el.replaceWith(wrapper)
+        return wrapper
+      }
+      const frames = document.getElementsByTagName('iframe')
+      const wrappedFrames = []
+      for (const i = 0; i < frames.length; i++) {
+        const wrappedFrame = wrapElement(frames[i], 'iframe__wrapper iframe__wrapper--loading')
+        frames[i].addEventListener('load', function() {
+          wrappedFrame.classList.remove('iframe__wrapper--loading')
+        })
+        wrappedFrames.push(wrappedFrame)
+      }
+
+      function OnlineState(context) {
+        return {
+          toOnline: function() {},
+          toOffline: function() {
+            for (const i = 0; i < wrappedFrames.length; i++) {
+              const wrappedFrame = wrappedFrames[i]
+              wrappedFrame.classList.add('iframe__wrapper--offline')
+            }
+            context.state = OfflineState(context)
+          }
+        }
+      }
+
+      function OfflineState(context) {
+        return {
+          toOnline: function() {
+            for (const i = 0; i < wrappedFrames.length; i++) {
+              const wrappedFrame = wrappedFrames[i]
+              wrappedFrame.classList.remove('iframe__wrapper--offline')
+            }
+            context.state = OnlineState(context)
+          },
+          toOffline: function() {}
+        }
+      }
+
+      function ConnectivityStateManager() {
+        const context = {}
+        context.state = window.navigator.onLine ? OnlineState(context) : OfflineState(context)
+
+        window.addEventListener('online', function() {
+          context.state.toOnline()
+        })
+        window.addEventListener('offline', function() {
+          context.state.toOffline()
+        })
+        return context
+      }
+
+      const stateManager = ConnectivityStateManager()
+    })()
+
+    ; // Report errors
+    (function() {
+      window.addEventListener('error', (e) =>
+        notifyError({
+          name: e.name,
+          message: e.message,
+        })
+      );
+    })();
+  </script>
+</body>
+
+</html>
